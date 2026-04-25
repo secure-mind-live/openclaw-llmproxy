@@ -1,0 +1,37 @@
+{
+  "_comment": "Example OpenClaw configuration to use this LLM proxy as the backend",
+
+  "llm": {
+    "provider": "openai-compatible",
+    "base_url": "http://localhost:8005/v1",
+    "api_key": "your-proxy-api-key",
+    "model": "llama3.2:1b"
+  },
+
+  "_examples": {
+    "use_openai_via_proxy": {
+      "provider": "openai-compatible",
+      "base_url": "http://localhost:8005/v1",
+      "api_key": "your-proxy-api-key",
+      "model": "gpt-4"
+    },
+    "use_anthropic_via_proxy": {
+      "provider": "openai-compatible",
+      "base_url": "http://localhost:8005/v1",
+      "api_key": "your-proxy-api-key",
+      "model": "claude-3-opus"
+    },
+    "use_ollama_via_proxy": {
+      "provider": "openai-compatible",
+      "base_url": "http://localhost:8005/v1",
+      "api_key": "your-proxy-api-key",
+      "model": "llama3.2:1b"
+    },
+    "use_openclaw_gateway_via_proxy": {
+      "provider": "openai-compatible",
+      "base_url": "http://localhost:8005/v1",
+      "api_key": "your-proxy-api-key",
+      "model": "openclaw/agent"
+    }
+  }
+}

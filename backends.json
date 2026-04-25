@@ -24,6 +24,11 @@
       "url": "http://localhost:8080",
       "name": "vllm",
       "timeout_s": 60
+    },
+    "openclaw/": {
+      "url": "http://localhost:3000",
+      "name": "openclaw",
+      "timeout_s": 120
     }
   }
 }

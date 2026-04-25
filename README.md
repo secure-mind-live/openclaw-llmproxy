@@ -1,6 +1,8 @@
 # OpenClaw LLM Proxy
 
-A lightweight, configurable reverse proxy for routing LLM API requests to multiple backends — OpenAI, Anthropic, Google, vLLM, Ollama, and more — through a single endpoint.
+A lightweight, configurable reverse proxy for routing LLM API requests to multiple backends — OpenAI, Anthropic, Google, vLLM, Ollama, and OpenClaw — through a single endpoint.
+
+Built for [OpenClaw](https://github.com/ParthaMehtaOrg), the open-source autonomous AI agent. Point OpenClaw at this proxy and get unified access to every LLM backend with auth, rate limiting, PII scanning, and logging — out of the box.
 
 ## Features
 
@@ -23,6 +25,7 @@ A lightweight, configurable reverse proxy for routing LLM API requests to multip
 | `claude-*` | Anthropic | `https://api.anthropic.com` |
 | `gemini-*` | Google | `https://generativelanguage.googleapis.com` |
 | `vllm/*` | vLLM | `http://localhost:8080` |
+| `openclaw/*` | OpenClaw Gateway | `http://localhost:3000` |
 | Everything else | Ollama | `http://localhost:11434` |
 
 Edit `backends.json` to add, remove, or modify backends:
@@ -86,6 +89,43 @@ curl -H "Authorization: Bearer your-secret-key" \
   "http://localhost:8005/logs?backend=ollama&limit=10&since=2026-04-25"
 ```
 
+## OpenClaw Integration
+
+This proxy is designed to sit between OpenClaw and its LLM providers. Instead of configuring each provider separately in OpenClaw, point it at the proxy and let the router handle the rest.
+
+**1. Start the proxy:**
+```bash
+PROXY_API_KEY=your-secret-key uvicorn proxy.main:app --host 0.0.0.0 --port 8005
+```
+
+**2. Configure OpenClaw to use the proxy as its LLM endpoint:**
+```json
+{
+  "llm": {
+    "provider": "openai-compatible",
+    "base_url": "http://localhost:8005/v1",
+    "api_key": "your-secret-key",
+    "model": "gpt-4"
+  }
+}
+```
+
+Change the `model` field to route to any backend:
+- `"model": "gpt-4"` — routes to OpenAI
+- `"model": "claude-3-opus"` — routes to Anthropic
+- `"model": "gemini-pro"` — routes to Google
+- `"model": "llama3.2:1b"` — routes to Ollama (local)
+- `"model": "openclaw/agent"` — routes to OpenClaw's own gateway
+
+See `openclaw-config.example.json` for a full example with all provider options.
+
+**What OpenClaw gets from the proxy:**
+- Single endpoint for all LLM providers (no per-provider config)
+- Auth, rate limiting, and size limits protecting your API keys
+- PII scanning on prompts and responses
+- Full request logging with latency, token usage, and security flags
+- Streaming support for real-time agent output
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -135,6 +175,7 @@ python -m pytest tests/test_proxy.py -v
 │   ├── logger.py              # JSONL request logging
 │   ├── security.py            # PII & injection scanning
 │   └── config.py              # Environment variable config
+├── openclaw-config.example.json # Example OpenClaw config pointing at this proxy
 ├── tests/
 │   └── test_proxy.py          # 33 tests
 ├── systemd/
