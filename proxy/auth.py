@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 PROXY_API_KEY = os.getenv("PROXY_API_KEY", "")
-EXEMPT_PATHS = {"/health"}
+EXEMPT_PATHS = {"/health", "/dashboard", "/dashboard/metrics"}
 
 
 class AuthMiddleware(BaseHTTPMiddleware):

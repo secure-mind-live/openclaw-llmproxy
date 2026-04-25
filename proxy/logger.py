@@ -21,6 +21,8 @@ def log_request(
     inbound_scan: dict | None = None,
     outbound_scan: dict | None = None,
     backend: str | None = None,
+    cache_hit: bool | None = None,
+    cost_usd: float | None = None,
 ):
     _ensure_log_dir()
 
@@ -51,6 +53,8 @@ def log_request(
         "total_tokens": total_tokens,
         "inbound_scan": inbound_scan,
         "outbound_scan": outbound_scan,
+        "cache_hit": cache_hit,
+        "cost_usd": cost_usd,
     }
 
     with open(LOG_FILE, "a") as f:

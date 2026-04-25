@@ -59,3 +59,9 @@ async def get_logs(
 
     entries = entries[-limit:]
     return {"entries": entries, "total": len(entries)}
+
+
+@router.get("/spend")
+async def get_spend():
+    from proxy.spend import get_spend_summary
+    return get_spend_summary()

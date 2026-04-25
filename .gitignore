@@ -4,3 +4,4 @@ __pycache__/
 logs/requests.jsonl
 .env
 venv/
+logs/spend.jsonl
