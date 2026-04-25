@@ -16,6 +16,7 @@ Built for [OpenClaw](https://github.com/ParthaMehtaOrg), the open-source autonom
 - **JSONL request logging** — Every request logged with backend, model, latency, token usage, and security scan results.
 - **Log viewer API** — `GET /logs` endpoint with filtering by backend, model, date, and limit.
 - **Health checks** — `GET /health` shows backend reachability and configured routes.
+- **[Interactive architecture diagram](docs/architecture.html)** — clickable flow visualization of the full request pipeline.
 
 ## Routing
 
@@ -153,6 +154,16 @@ sudo ln -s /etc/nginx/sites-available/openclaw-proxy.conf /etc/nginx/sites-enabl
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
+## Architecture
+
+See the [interactive architecture diagram](docs/architecture.html) for a visual walkthrough of the full request flow — from client through middleware, proxy core, and out to backends.
+
+```
+Client → Nginx (TLS) → Size Limit → Auth → Rate Limit → FastAPI Proxy → Backend
+                                                            ↕         ↕
+                                                         Logger   Security Scanner
+```
+
 ## Tests
 
 ```bash
@@ -183,5 +194,7 @@ python -m pytest tests/test_proxy.py -v
 │   └── ollama.service         # Ollama systemd unit
 ├── nginx/
 │   └── openclaw-proxy.conf    # Nginx TLS reverse proxy config
+├── docs/
+│   └── architecture.html      # Interactive architecture flow diagram
 └── requirements.txt
 ```
