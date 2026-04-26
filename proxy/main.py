@@ -18,6 +18,7 @@ from proxy.router import resolve as resolve_backend
 from proxy.security import scan_inbound, scan_outbound
 from proxy.sizelimit import SizeLimitMiddleware
 from proxy import spend
+from proxy.translators import translate_request, translate_response, translate_stream_chunk, needs_translation
 
 app = FastAPI(title="OpenClaw LLM Proxy")
 
@@ -136,15 +137,22 @@ async def _handle_buffered_with_fallback(request, path, headers, body,
 
     last_error = None
     for i, backend in enumerate(backends_to_try):
-        url = f"{backend['url']}/{path}"
         bname = backend["name"]
         timeout_s = get_backend_timeout(bname)
+
+        # Translate request for this backend
+        t_body, t_headers, t_path = translate_request(
+            request_body, dict(headers), path, bname,
+        )
+        send_body = json.dumps(t_body).encode() if t_body and needs_translation(bname) else body
+        url = f"{backend['url']}/{t_path}"
+
         start = time.perf_counter()
 
         try:
             async with httpx.AsyncClient() as client:
                 response = await request_with_retry(
-                    client, request.method, url, headers, body,
+                    client, request.method, url, t_headers, send_body,
                     request.query_params, timeout_s,
                 )
         except httpx.TimeoutException:
@@ -171,6 +179,10 @@ async def _handle_buffered_with_fallback(request, path, headers, body,
                 response_body = response.json()
             except (json.JSONDecodeError, ValueError):
                 response_body = None
+
+        # Translate response back to OpenAI format
+        if response_body and needs_translation(bname):
+            response_body = translate_response(response_body, bname)
 
         outbound_scan = None
         if response_body and isinstance(response_body, dict):
@@ -215,16 +227,23 @@ async def _handle_buffered_with_fallback(request, path, headers, body,
 async def _handle_streaming_with_fallback(request, path, headers, body,
                                            request_body, backends_to_try, inbound_scan):
     for i, backend in enumerate(backends_to_try):
-        url = f"{backend['url']}/{path}"
         bname = backend["name"]
         timeout_s = get_backend_timeout(bname)
+
+        # Translate request for this backend
+        t_body, t_headers, t_path = translate_request(
+            request_body, dict(headers), path, bname, is_streaming=True,
+        )
+        send_body = json.dumps(t_body).encode() if t_body and needs_translation(bname) else body
+        url = f"{backend['url']}/{t_path}"
+
         start = time.perf_counter()
 
         client = httpx.AsyncClient(timeout=timeout_s)
         try:
             req = client.build_request(
                 method=request.method, url=url,
-                headers=headers, content=body, params=request.query_params,
+                headers=t_headers, content=send_body, params=request.query_params,
             )
             response = await client.send(req, stream=True)
         except httpx.TimeoutException:
@@ -239,10 +258,18 @@ async def _handle_streaming_with_fallback(request, path, headers, body,
             return JSONResponse(status_code=502, content={"error": f"Cannot connect to backend '{bname}': {exc}"})
 
         # Connected successfully — stream the response
+        _translate = needs_translation(bname)
+        _bname = bname
+
         async def event_generator():
             try:
                 async for chunk in response.aiter_bytes():
-                    yield chunk
+                    if _translate:
+                        translated = translate_stream_chunk(chunk, _bname)
+                        if translated:
+                            yield translated
+                    else:
+                        yield chunk
             finally:
                 await response.aclose()
                 await client.aclose()
