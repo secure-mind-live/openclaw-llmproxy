@@ -13,6 +13,11 @@ Built for [OpenClaw](https://github.com/ParthaMehtaOrg), the open-source autonom
 - **Retry with backoff** — Automatic retry on 429/503 with exponential backoff. Per-backend timeouts configurable in `backends.json`.
 - **Request size limits** — Reject oversized payloads with `MAX_REQUEST_SIZE_MB`.
 - **PII & injection scanning** — Inbound prompt scanning for PII and injection attacks, outbound response scanning for PII leakage (via [AgnosticSecurity](https://github.com/ParthaMehtaOrg/AgnosticSecurity)).
+- **Security enforcement modes** — `SECURITY_PII_MODE=block` (403 on PII), `redact` (auto-scrub before forwarding), or `log`. Same for injection.
+- **API format translation** — Clients send OpenAI format for any backend. Proxy auto-translates to Anthropic Messages API and Google Gemini API.
+- **Per-backend API key management** — Add `"api_key"` in `backends.json`. Clients only need the proxy key.
+- **Webhook security alerts** — `SECURITY_WEBHOOK_URL` fires JSON to Slack/PagerDuty on PII, injection, or budget events.
+- **Log body redaction** — `LOG_REDACT_BODIES=true` excludes prompt/response text from logs for compliance.
 - **JSONL request logging** — Every request logged with backend, model, latency, token usage, and security scan results.
 - **Log viewer API** — `GET /logs` endpoint with filtering by backend, model, date, and limit.
 - **Health checks** — `GET /health` shows backend reachability and configured routes.
@@ -68,18 +73,25 @@ Edit `backends.json` to add, remove, or modify backends. All new fields are opti
 | `fallback` | No | Ordered list of backend names to try on failure |
 | `pricing` | No | `{"prompt": cost_per_1k, "completion": cost_per_1k}` for spend tracking |
 | `monthly_budget_usd` | No | Monthly spend cap — returns 402 when exceeded |
+| `api_key` | No | Backend-specific API key (proxy injects it, clients don't need it) |
 
 ## Quick Start
 
+**Docker (recommended):**
 ```bash
-# Install dependencies
+PROXY_API_KEY=your-key docker compose up -d
+docker compose exec ollama ollama pull llama3.2:1b
+```
+
+**Local:**
+```bash
 pip install -r requirements.txt
+PROXY_API_KEY=your-key uvicorn proxy.main:app --host 0.0.0.0 --port 8005
+```
 
-# Run (no auth, local dev)
-uvicorn proxy.main:app --host 0.0.0.0 --port 8005
-
-# Run (with auth)
-PROXY_API_KEY=your-secret-key uvicorn proxy.main:app --host 0.0.0.0 --port 8005
+**With security enforcement:**
+```bash
+PROXY_API_KEY=your-key SECURITY_PII_MODE=redact SECURITY_INJECTION_MODE=block docker compose up -d
 ```
 
 ## Usage
@@ -174,20 +186,65 @@ See `openclaw-config.example.json` for a full example with all provider options.
 | `LOG_DIR` | `./logs` | Directory for JSONL log files |
 | `CACHE_TTL_S` | `3600` | Cache entry time-to-live in seconds |
 | `CACHE_MAX_ENTRIES` | `1000` | Maximum cached responses in memory |
+| `SECURITY_PII_MODE` | `log` | `log`, `block` (403), or `redact` (auto-scrub PII) |
+| `SECURITY_INJECTION_MODE` | `log` | `log` or `block` (403 on injection attempts) |
+| `SECURITY_WEBHOOK_URL` | _(empty)_ | Webhook URL for security alerts (Slack, PagerDuty) |
+| `LOG_REDACT_BODIES` | `false` | Exclude request/response bodies from JSONL logs |
 
-## VPS Deployment
+## Deployment
 
-Systemd and nginx configs are provided for production deployment:
+### Docker Compose (recommended)
 
 ```bash
-# Copy systemd service
-sudo cp systemd/openclaw-proxy.service /etc/systemd/system/
-sudo systemctl enable --now openclaw-proxy
+PROXY_API_KEY=your-key docker compose up -d
+```
 
-# Copy nginx config (update server_name and SSL paths)
+Starts 3 containers: proxy (port 8005), Ollama (port 11434), and a background monitor that health-checks every 60 seconds.
+
+### Kubernetes
+
+```bash
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/secret.yaml        # edit with real keys first
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/deployment.yaml     # 3 replicas, health probes
+kubectl apply -f k8s/service.yaml
+kubectl apply -f k8s/ingress.yaml        # TLS + SSE support
+kubectl apply -f k8s/hpa.yaml            # auto-scale 2→10 pods
+```
+
+### VPS (systemd + nginx)
+
+```bash
+sudo cp systemd/openclaw-proxy.service /etc/systemd/system/
+sudo cp systemd/openclaw-monitor.service /etc/systemd/system/
+sudo systemctl enable --now openclaw-proxy openclaw-monitor
+
 sudo cp nginx/openclaw-proxy.conf /etc/nginx/sites-available/
 sudo ln -s /etc/nginx/sites-available/openclaw-proxy.conf /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
+```
+
+## CI/CD & Monitoring
+
+**GitHub Actions** runs on every push:
+- 97 unit tests
+- Docker build + integration checks
+- Automated smoke tests
+
+**Smoke test** (post-deploy verification):
+```bash
+bash scripts/smoke_test.sh http://localhost:8005 your-key
+```
+
+**Continuous monitor** (runs automatically as Docker sidecar):
+```bash
+docker compose logs -f monitor
+```
+
+Or standalone:
+```bash
+python scripts/monitor.py --url http://localhost:8005 --api-key your-key --interval 60
 ```
 
 ## Architecture
@@ -205,8 +262,7 @@ Client → Nginx (TLS) → Size Limit → Auth → Rate Limit → Cache Check
 ## Tests
 
 ```bash
-pip install pytest
-python -m pytest tests/ -v
+python -m pytest tests/ -v    # 97 tests
 ```
 
 ## Project Structure
@@ -227,22 +283,46 @@ python -m pytest tests/ -v
 │   ├── cache.py               # In-memory LRU response cache with TTL
 │   ├── spend.py               # Cost tracking, budget enforcement
 │   ├── logger.py              # JSONL request logging
-│   ├── security.py            # PII & injection scanning
+│   ├── security.py            # PII & injection scanning (block/redact/log)
+│   ├── alerts.py              # Webhook alerts for security events
+│   ├── keymanager.py          # Per-backend API key injection
+│   ├── translators/           # API format translation
+│   │   ├── __init__.py        # Translation dispatcher
+│   │   ├── anthropic.py       # OpenAI ↔ Anthropic Messages API
+│   │   └── gemini.py          # OpenAI ↔ Google Gemini API
 │   └── config.py              # Environment variable config
-├── openclaw-config.example.json # Example OpenClaw config pointing at this proxy
-├── tests/
+├── openclaw-config.example.json # Example OpenClaw config
+├── tests/                     # 97 tests
 │   ├── test_proxy.py          # Core proxy tests (33)
 │   ├── test_loadbalancer.py   # Load balancing tests (6)
 │   ├── test_fallback.py       # Fallback chain tests (9)
 │   ├── test_cache.py          # Response cache tests (11)
 │   ├── test_spend.py          # Spend tracking tests (5)
-│   └── test_dashboard_web.py  # Web dashboard tests (4)
+│   ├── test_dashboard_web.py  # Web dashboard tests (4)
+│   ├── test_translators.py    # API translation tests (21)
+│   └── test_enforcement.py    # Security enforcement tests (8)
+├── scripts/
+│   ├── smoke_test.sh          # Post-deploy verification (9 checks)
+│   └── monitor.py             # Continuous background health monitor
+├── Dockerfile                 # Python 3.12-slim container
+├── docker-compose.yml         # Proxy + Ollama + Monitor stack
+├── backends.docker.json       # Docker-specific backend URLs
+├── k8s/                       # Kubernetes manifests
+│   ├── namespace.yaml
+│   ├── secret.yaml
+│   ├── configmap.yaml
+│   ├── deployment.yaml        # 3 replicas, health probes
+│   ├── service.yaml
+│   ├── ingress.yaml           # TLS + SSE support
+│   └── hpa.yaml               # Auto-scale 2→10 pods
+├── .github/workflows/ci.yml   # GitHub Actions CI/CD
 ├── systemd/
-│   ├── openclaw-proxy.service # Proxy systemd unit
-│   └── ollama.service         # Ollama systemd unit
+│   ├── openclaw-proxy.service
+│   ├── openclaw-monitor.service
+│   └── ollama.service
 ├── nginx/
-│   └── openclaw-proxy.conf    # Nginx TLS reverse proxy config
+│   └── openclaw-proxy.conf
 ├── docs/
-│   └── architecture.html      # Interactive architecture flow diagram
+│   └── architecture.html      # Interactive architecture diagram
 └── requirements.txt
 ```
