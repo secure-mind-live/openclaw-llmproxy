@@ -225,17 +225,22 @@ kubectl apply -f k8s/ingress.yaml        # TLS + SSE support
 kubectl apply -f k8s/hpa.yaml            # auto-scale 2→10 pods
 ```
 
-### VPS (systemd + nginx)
+### VPS (one-command setup)
+
+SSH into a fresh Ubuntu VPS as root and run:
 
 ```bash
-sudo cp systemd/openclaw-proxy.service /etc/systemd/system/
-sudo cp systemd/openclaw-monitor.service /etc/systemd/system/
-sudo systemctl enable --now openclaw-proxy openclaw-monitor
-
-sudo cp nginx/openclaw-proxy.conf /etc/nginx/sites-available/
-sudo ln -s /etc/nginx/sites-available/openclaw-proxy.conf /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
+curl -sSL https://raw.githubusercontent.com/ParthaMehtaOrg/openclaw-llmproxy/main/scripts/vps_setup.sh | bash
 ```
+
+With HTTPS + Tailscale VPN:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/ParthaMehtaOrg/openclaw-llmproxy/main/scripts/vps_setup.sh | \
+  bash -s -- --domain llmproxy.example.com --tailscale-key tskey-auth-xxx
+```
+
+This automates 15 phases: system updates, non-root user, SSH hardening (port 2222, key-only), UFW firewall, Fail2Ban, auto security updates, Tailscale VPN (optional), IPv6 disabled, Docker install, proxy deployment (all 6 containers), SSL via Caddy (optional), systemd watchdog, and smoke tests.
 
 ## CI/CD & Monitoring
 
