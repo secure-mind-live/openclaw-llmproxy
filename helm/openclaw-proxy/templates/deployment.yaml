@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-proxy
+  labels:
+    app: openclaw-proxy
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: openclaw-proxy
+  template:
+    metadata:
+      labels:
+        app: openclaw-proxy
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: proxy
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          ports:
+            - containerPort: 8000
+          env:
+            - name: PROXY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: proxy-api-key
+            - name: RATE_LIMIT_RPM
+              value: "{{ .Values.proxy.rateLimitRpm }}"
+            - name: MAX_REQUEST_SIZE_MB
+              value: "{{ .Values.proxy.maxRequestSizeMb }}"
+            - name: CACHE_TTL_S
+              value: "{{ .Values.proxy.cacheTtlS }}"
+            - name: CACHE_MAX_ENTRIES
+              value: "{{ .Values.proxy.cacheMaxEntries }}"
+            - name: SECURITY_PII_MODE
+              value: "{{ .Values.proxy.securityPiiMode }}"
+            - name: SECURITY_INJECTION_MODE
+              value: "{{ .Values.proxy.securityInjectionMode }}"
+            - name: LOG_REDACT_BODIES
+              value: "{{ .Values.proxy.logRedactBodies }}"
+            {{- if .Values.redis.enabled }}
+            - name: REDIS_URL
+              value: "{{ .Values.redis.url }}"
+            - name: REDIS_CLUSTER
+              value: "{{ .Values.redis.cluster }}"
+            {{- end }}
+            {{- if .Values.postgresql.enabled }}
+            - name: DATABASE_URL
+              value: "{{ .Values.postgresql.url }}"
+            {{- if .Values.postgresql.readUrl }}
+            - name: DATABASE_READ_URL
+              value: "{{ .Values.postgresql.readUrl }}"
+            {{- end }}
+            {{- end }}
+            {{- if .Values.kafka.enabled }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "{{ .Values.kafka.bootstrapServers }}"
+            - name: KAFKA_TOPIC
+              value: "{{ .Values.kafka.topic }}"
+            {{- end }}
+            - name: OLLAMA_BASE_URL
+              value: "{{ .Values.ollama.baseUrl }}"
+          resources:
+            requests:
+              cpu: {{ .Values.resources.requests.cpu }}
+              memory: {{ .Values.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.resources.limits.cpu }}
+              memory: {{ .Values.resources.limits.memory }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 3
+            periodSeconds: 10

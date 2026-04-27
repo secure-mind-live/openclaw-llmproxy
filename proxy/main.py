@@ -14,12 +14,16 @@ from proxy.fallback import get_fallback_chain, is_fallback_eligible
 from proxy.keymanager import inject_backend_key
 from proxy.loadbalancer import record_latency
 from proxy.logger import log_request
+from proxy import metrics
+from proxy.metrics import router as metrics_router
 from proxy.ratelimit import RateLimitMiddleware
 from proxy.retry import request_with_retry, get_backend_timeout
 from proxy.router import resolve as resolve_backend
 from proxy.security import scan_inbound, scan_outbound, redact_messages, redact_text
 from proxy.sizelimit import SizeLimitMiddleware
 from proxy import spend
+from proxy import tenants
+from proxy.tracing import TracingMiddleware, get_trace_id
 from proxy.translators import translate_request, translate_response, translate_stream_chunk, needs_translation
 
 app = FastAPI(title="OpenClaw LLM Proxy")
@@ -28,15 +32,16 @@ app = FastAPI(title="OpenClaw LLM Proxy")
 _HTTP_LIMITS = httpx.Limits(max_connections=100, max_keepalive_connections=20)
 
 
-# Middleware order: SizeLimit (outermost) → Auth → RateLimit (innermost)
+# Middleware order: Tracing (outermost) → SizeLimit → Auth → RateLimit (innermost)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(AuthMiddleware)
 app.add_middleware(SizeLimitMiddleware)
+app.add_middleware(TracingMiddleware)
 
-# Dashboard routes (must be before catch-all)
+# Routes (must be before catch-all)
 app.include_router(dashboard_router)
+app.include_router(metrics_router)
 
-# Web dashboard routes
 from proxy.web_dashboard import router as web_dashboard_router
 app.include_router(web_dashboard_router)
 
@@ -87,6 +92,14 @@ async def proxy(request: Request, path: str):
 
     model = request_body.get("model") if request_body and isinstance(request_body, dict) else None
     backend_url, backend_name = resolve_backend(model, path)
+
+    # Multi-tenant checks
+    tenant_key = getattr(request.state, "tenant_key", None)
+    if tenant_key and tenants.is_multi_tenant():
+        if not tenants.check_backend_allowed(tenant_key, backend_name):
+            return JSONResponse(status_code=403, content={"error": f"Backend '{backend_name}' not allowed for your team"})
+        if not tenants.check_model_allowed(tenant_key, model):
+            return JSONResponse(status_code=403, content={"error": f"Model '{model}' not allowed for your team"})
 
     # Budget check
     if spend.check_budget(backend_name):
@@ -264,6 +277,12 @@ async def _handle_buffered_with_fallback(request, path, headers, body,
             inbound_scan=inbound_scan, outbound_scan=outbound_scan,
             backend=bname, cache_hit=False, cost_usd=cost_usd,
         )
+
+        # Prometheus metrics
+        model_name = request_body.get("model") if request_body and isinstance(request_body, dict) else None
+        metrics.record_request(bname, model_name, response.status_code, latency_ms, cache_hit=False)
+        metrics.record_tokens(bname, model_name, prompt_tokens, completion_tokens)
+        metrics.record_spend(bname, cost_usd)
 
         return JSONResponse(
             content=response_body if response_body is not None else response.text,

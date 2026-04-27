@@ -1,0 +1,59 @@
+replicaCount: 3
+
+image:
+  repository: openclaw-llmproxy
+  tag: latest
+  pullPolicy: IfNotPresent
+
+proxy:
+  apiKey: "changeme"
+  rateLimitRpm: 60
+  maxRequestSizeMb: 10
+  cacheTtlS: 3600
+  cacheMaxEntries: 1000
+  securityPiiMode: "log"
+  securityInjectionMode: "log"
+  logRedactBodies: false
+
+redis:
+  enabled: true
+  url: "redis://redis:6379"
+  cluster: false
+
+postgresql:
+  enabled: true
+  url: "postgresql://openclaw:openclaw@postgres:5432/openclaw"
+  readUrl: ""
+
+kafka:
+  enabled: false
+  bootstrapServers: ""
+  topic: "llmproxy.requests"
+
+ollama:
+  enabled: true
+  baseUrl: "http://ollama:11434"
+
+ingress:
+  enabled: false
+  host: llmproxy.example.com
+  tls: true
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPU: 70
+  targetMemory: 80
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+monitoring:
+  enabled: true
+  interval: 60

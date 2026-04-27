@@ -1,0 +1,25 @@
+{
+  "tenants": {
+    "team-alpha-key-change-me": {
+      "name": "Team Alpha",
+      "rate_limit_rpm": 100,
+      "monthly_budget_usd": 500.0,
+      "allowed_backends": ["openai", "anthropic", "ollama"],
+      "allowed_models": ["gpt-4", "claude-3-opus", "llama3.2:1b"]
+    },
+    "team-beta-key-change-me": {
+      "name": "Team Beta",
+      "rate_limit_rpm": 30,
+      "monthly_budget_usd": 50.0,
+      "allowed_backends": ["ollama"],
+      "allowed_models": ["llama3.2:1b"]
+    },
+    "readonly-dashboard-key": {
+      "name": "Dashboard Viewer",
+      "rate_limit_rpm": 10,
+      "monthly_budget_usd": 0,
+      "allowed_backends": [],
+      "allowed_models": []
+    }
+  }
+}
