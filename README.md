@@ -1,8 +1,41 @@
 # OpenClaw LLM Proxy
 
-A lightweight, configurable reverse proxy for routing LLM API requests to multiple backends — OpenAI, Anthropic, Google, vLLM, Ollama, and OpenClaw — through a single endpoint.
+[![Tests](https://img.shields.io/badge/tests-113%20passing-brightgreen)]()
+[![DLP](https://img.shields.io/badge/DLP-PII%20%2B%20injection%20scanning-blue)]()
+[![Docker](https://img.shields.io/badge/docker-one%20command-blue)]()
+[![License](https://img.shields.io/badge/license-proprietary-orange)]()
 
-Built for [OpenClaw](https://github.com/ParthaMehtaOrg), the open-source autonomous AI agent. Point OpenClaw at this proxy and get unified access to every LLM backend with auth, rate limiting, PII scanning, and logging — out of the box.
+**The LLM proxy with built-in DLP.** Drop-in replacement for the OpenAI API that scans every prompt and response for PII, credentials, and injection attacks. Routes across 6 backends. Self-hosted, zero telemetry.
+
+```
+Client (any SDK) → OpenClaw Proxy → [DLP Scan] → [Smart Route] → LLM Backend
+                        ↓                              ↓
+                  PII blocked/redacted          OpenAI / Anthropic / Google
+                  Injection blocked             Ollama / vLLM / OpenClaw
+                  Logged + alerted              (auto-selected by prefix)
+```
+
+## Why OpenClaw vs Other Proxies?
+
+| Feature | LiteLLM | Portkey | OpenRouter | **OpenClaw** |
+|---------|---------|---------|------------|-------------|
+| Multi-provider routing | ✅ | ✅ | ✅ | ✅ |
+| OpenAI-compatible API | ✅ | ✅ | ✅ | ✅ |
+| **PII/credential scanning** | ❌ | ❌ | ❌ | **✅ (block/redact/log)** |
+| **Injection detection** | ❌ | ❌ | ❌ | **✅ (block/log)** |
+| **Security webhook alerts** | ❌ | ❌ | ❌ | **✅ (Slack/PagerDuty)** |
+| API format translation | ✅ | ✅ | ✅ | ✅ (Anthropic + Gemini) |
+| Spend tracking + budgets | ✅ | ✅ | ❌ | ✅ (per-backend) |
+| Multi-tenancy | ❌ | ✅ | ❌ | ✅ (per-team keys/limits) |
+| Response caching | ❌ | ✅ | ❌ | ✅ (LRU + TTL) |
+| Load balancing + fallback | Partial | ✅ | ❌ | ✅ (3 strategies + chains) |
+| Self-hosted | ✅ | ❌ (cloud) | ❌ (cloud) | **✅ (your infra)** |
+| Helm chart | ❌ | ❌ | ❌ | **✅** |
+| Prometheus metrics | ❌ | ❌ | ❌ | **✅** |
+| Python SDK | ✅ | ✅ | ❌ | ✅ (`as_openai()` compat) |
+| Interactive arch diagram | ❌ | ❌ | ❌ | **✅** |
+
+**Key differentiator:** LiteLLM, Portkey, and OpenRouter route your LLM calls — but none of them scan what's in those calls. OpenClaw scans every prompt for PII (SSN, credit cards, API keys) and injection attacks before they reach the provider.
 
 ## Features
 
