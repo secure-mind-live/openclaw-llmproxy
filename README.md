@@ -7,6 +7,8 @@
 
 **The LLM proxy with built-in DLP.** Drop-in replacement for the OpenAI API that scans every prompt and response for PII, credentials, and injection attacks. Routes across 6 backends. Self-hosted, zero telemetry.
 
+![Demo](docs/demo.gif)
+
 ```
 Client (any SDK) → OpenClaw Proxy → [DLP Scan] → [Smart Route] → LLM Backend
                         ↓                              ↓
